@@ -1,21 +1,19 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"strconv"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/joho/godotenv"
 	gecko "github.com/superoo7/go-gecko/v3"
 )
 
 // Global variables
 var bot *tgbotapi.BotAPI
-var chatID int64
 
 // Function to fetch BTC price data
 func getBTCPrice() (float64, error) {
@@ -60,8 +58,102 @@ func getHistoricalData() (map[string]float64, error) {
 	return historicalPrices, nil
 }
 
+// Function to fetch BTC current block number
+func getBTCBlockNumber() (int64, error) {
+	response, err := http.Get("https://mempool.space/api/blocks/tip/height")
+	if err != nil {
+		return 0, err
+	}
+	defer response.Body.Close()
+
+	var blockNumber int64
+	err = json.NewDecoder(response.Body).Decode(&blockNumber)
+	if err != nil {
+		return 0, err
+	}
+
+	return blockNumber, nil
+}
+
+// Function to fetch BTC average transaction fees
+func getBTCFees() (float64, float64, float64, error) {
+	currentPrice, err := getBTCPrice()
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	response, err := http.Get("https://mempool.space/api/v1/fees/recommended")
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	defer response.Body.Close()
+
+	var fees struct {
+		FastestFee  float64 `json:"fastestFee"`
+		HalfHourFee float64 `json:"halfHourFee"`
+		HourFee     float64 `json:"hourFee"`
+	}
+	err = json.NewDecoder(response.Body).Decode(&fees)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	// Convert sat/vB to USD
+	toUSD := func(satPerVByte float64) float64 {
+		// 1 BTC = 100,000,000 satoshis
+		// Transaction size is assumed to be 250 bytes (average)
+		return (satPerVByte * 250 * currentPrice) / 100000000
+	}
+
+	return toUSD(fees.HourFee), toUSD(fees.HalfHourFee), toUSD(fees.FastestFee), nil
+}
+
+// Function to fetch BTC market cap
+func getBTCMarketCap() (float64, error) {
+	cg := gecko.NewClient(nil)
+	coin, err := cg.CoinsID("bitcoin", false, false, false, false, false, false)
+	if err != nil {
+		return 0, err
+	}
+
+	// Extract the market cap in USD
+	if coin.MarketData == nil {
+		return 0, fmt.Errorf("market data is nil")
+	}
+
+	marketCap, ok := coin.MarketData.MarketCap["usd"]
+	if !ok {
+		return 0, fmt.Errorf("market cap in USD not found")
+	}
+
+	return marketCap, nil
+}
+
+// Function to fetch BTC hashrate
+func getBTCHashrate() (float64, error) {
+	response, err := http.Get("https://mempool.space/api/v1/mining/hashrate")
+	if err != nil {
+		return 0, err
+	}
+	defer response.Body.Close()
+
+	var hashrate struct {
+		TerahashesPerSecond float64 `json:"terahashesPerSecond"`
+	}
+	err = json.NewDecoder(response.Body).Decode(&hashrate)
+	if err != nil {
+		return 0, err
+	}
+
+	return hashrate.TerahashesPerSecond / 1e6, nil // Convert from TH/s to EH/s
+}
+
 // Function to send a message
 func sendMessage(chatID int64, message string) {
+	if bot == nil {
+		log.Println("Bot is not initialized")
+		return
+	}
 	log.Println("Sending message:", message)
 	msg := tgbotapi.NewMessage(chatID, message)
 	_, err := bot.Send(msg)
@@ -72,6 +164,7 @@ func sendMessage(chatID int64, message string) {
 
 // Handle /btc command
 func handleBTCCommand(update tgbotapi.Update) {
+	log.Println("Received /btc command")
 	currentPrice, err := getBTCPrice()
 	if err != nil {
 		log.Println("Error fetching BTC price:", err)
@@ -82,8 +175,61 @@ func handleBTCCommand(update tgbotapi.Update) {
 	sendMessage(update.Message.Chat.ID, message)
 }
 
+// Handle /block command
+func handleBlockCommand(update tgbotapi.Update) {
+	log.Println("Received /block command")
+	blockNumber, err := getBTCBlockNumber()
+	if err != nil {
+		log.Println("Error fetching BTC block number:", err)
+		sendMessage(update.Message.Chat.ID, "Error fetching BTC block number.")
+		return
+	}
+	message := fmt.Sprintf("Current BTC block number: %d", blockNumber)
+	sendMessage(update.Message.Chat.ID, message)
+}
+
+// Handle /fees command
+func handleFeesCommand(update tgbotapi.Update) {
+	log.Println("Received /fees command")
+	low, medium, high, err := getBTCFees()
+	if err != nil {
+		log.Println("Error fetching BTC fees:", err)
+		sendMessage(update.Message.Chat.ID, "Error fetching BTC fees.")
+		return
+	}
+	message := fmt.Sprintf("BTC Transaction Fees:\nLow: $%.2f\nMedium: $%.2f\nHigh: $%.2f", low, medium, high)
+	sendMessage(update.Message.Chat.ID, message)
+}
+
+// Handle /marketcap command
+func handleMarketCapCommand(update tgbotapi.Update) {
+	log.Println("Received /marketcap command")
+	marketCap, err := getBTCMarketCap()
+	if err != nil {
+		log.Println("Error fetching BTC market cap:", err)
+		sendMessage(update.Message.Chat.ID, "Error fetching BTC market cap.")
+		return
+	}
+	message := fmt.Sprintf("Current BTC market cap: $%.2f", marketCap)
+	sendMessage(update.Message.Chat.ID, message)
+}
+
+// Handle /hashrate command
+func handleHashrateCommand(update tgbotapi.Update) {
+	log.Println("Received /hashrate command")
+	hashrate, err := getBTCHashrate()
+	if err != nil {
+		log.Println("Error fetching BTC hashrate:", err)
+		sendMessage(update.Message.Chat.ID, "Error fetching BTC hashrate.")
+		return
+	}
+	message := fmt.Sprintf("Current BTC hashrate: %.2f EH/s", hashrate)
+	sendMessage(update.Message.Chat.ID, message)
+}
+
 // Handle /change command
 func handleChangeCommand(update tgbotapi.Update) {
+	log.Println("Received /change command")
 	currentPrice, err := getBTCPrice()
 	if err != nil {
 		log.Println("Error fetching current BTC price:", err)
@@ -112,28 +258,21 @@ func handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
-
 	botToken := os.Getenv("BOT_TOKEN")
-	chatIDStr := os.Getenv("CHAT_ID")
+
+	if botToken == "" {
+		log.Fatal("BOT_TOKEN environment variable is not set")
+	}
 
 	log.Println("BOT_TOKEN:", botToken)
-	log.Println("CHAT_ID:", chatIDStr)
 
-	chatID, err = strconv.ParseInt(chatIDStr, 10, 64)
-	if err != nil {
-		log.Fatal("Error parsing CHAT_ID")
-	}
-
+	var err error
 	bot, err = tgbotapi.NewBotAPI(botToken)
 	if err != nil {
 		log.Panic(err)
 	}
 
-	sendMessage(chatID, "Bot started and ready to receive commands!")
+	log.Println("Bot started and ready to receive commands!")
 
 	// Setting up command handler
 	u := tgbotapi.NewUpdate(0)
@@ -147,8 +286,18 @@ func main() {
 					switch update.Message.Command() {
 					case "btc":
 						handleBTCCommand(update)
+					case "block":
+						handleBlockCommand(update)
+					case "fees":
+						handleFeesCommand(update)
+					case "marketcap":
+						handleMarketCapCommand(update)
+					case "hashrate":
+						handleHashrateCommand(update)
 					case "change":
 						handleChangeCommand(update)
+					default:
+						log.Println("Unknown command received:", update.Message.Command())
 					}
 				}
 			}
