@@ -3,9 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -135,21 +137,31 @@ func getBTCMarketCap() (float64, error) {
 
 // Function to fetch BTC hashrate
 func getBTCHashrate() (float64, error) {
-	response, err := http.Get("https://mempool.space/api/v1/mining/hashrate")
+	// Use blockchain.info API instead
+	response, err := http.Get("https://blockchain.info/q/hashrate")
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("error fetching hashrate: %v", err)
 	}
 	defer response.Body.Close()
 
-	var hashrate struct {
-		TerahashesPerSecond float64 `json:"terahashesPerSecond"`
-	}
-	err = json.NewDecoder(response.Body).Decode(&hashrate)
-	if err != nil {
-		return 0, err
+	if response.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("API returned non-200 status code: %d", response.StatusCode)
 	}
 
-	return hashrate.TerahashesPerSecond / 1e6, nil // Convert from TH/s to EH/s
+	// Read the response body
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return 0, fmt.Errorf("error reading response body: %v", err)
+	}
+
+	// Parse the hashrate (it's returned as a simple number)
+	hashrate, err := strconv.ParseFloat(string(body), 64)
+	if err != nil {
+		return 0, fmt.Errorf("error parsing hashrate: %v", err)
+	}
+
+	// Convert from H/s to EH/s
+	return hashrate / 1e18, nil
 }
 
 // Function to fetch BTC all-time high
