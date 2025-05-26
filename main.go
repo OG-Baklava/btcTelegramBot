@@ -36,20 +36,24 @@ func getHistoricalData() (map[string]float64, error) {
 	historicalPrices := make(map[string]float64)
 
 	now := time.Now()
-	periods := map[string]int{
-		"1 Day":    1,
-		"7 Days":   7,
-		"1 Month":  30,
-		"3 Months": 90,
-		"6 Months": 180,
-		"1 Year":   365,
+	// Define periods in order from shortest to longest
+	periods := []struct {
+		label string
+		days  int
+	}{
+		{"1 Day", 1},
+		{"7 Days", 7},
+		{"1 Month", 30},
+		{"3 Months", 90},
+		{"6 Months", 180},
+		{"1 Year", 365},
 	}
 
-	for period, days := range periods {
-		date := now.AddDate(0, 0, -days).Unix() * 1000 // Convert to milliseconds
+	for _, period := range periods {
+		date := now.AddDate(0, 0, -period.days).Unix() * 1000 // Convert to milliseconds
 		for _, pricePoint := range *data.Prices {
 			if int64(pricePoint[0]) >= date {
-				historicalPrices[period] = float64(pricePoint[1]) // Convert float32 to float64
+				historicalPrices[period.label] = float64(pricePoint[1]) // Convert float32 to float64
 				break
 			}
 		}
@@ -282,10 +286,22 @@ func handleChangeCommand(update tgbotapi.Update) {
 		return
 	}
 
+	// Define the order of periods
+	periods := []string{
+		"1 Day",
+		"7 Days",
+		"1 Month",
+		"3 Months",
+		"6 Months",
+		"1 Year",
+	}
+
 	message := "Percentage changes in BTC price:\n"
-	for period, historicalPrice := range historicalData {
-		change := ((currentPrice - historicalPrice) / historicalPrice) * 100
-		message += fmt.Sprintf("%s: %.2f%%\n", period, change)
+	for _, period := range periods {
+		if historicalPrice, ok := historicalData[period]; ok {
+			change := ((currentPrice - historicalPrice) / historicalPrice) * 100
+			message += fmt.Sprintf("%s: %.2f%%\n", period, change)
+		}
 	}
 	sendMessage(update.Message.Chat.ID, message)
 }
