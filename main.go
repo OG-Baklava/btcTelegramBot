@@ -135,8 +135,8 @@ func getBTCMarketCap() (float64, error) {
 
 // Function to fetch BTC hashrate
 func getBTCHashrate() (float64, error) {
-	// Use mempool.space API for hashrate
-	response, err := http.Get("https://mempool.space/api/v1/mining/hashrate/1d")
+	// Use blockchain.com API for hashrate
+	response, err := http.Get("https://api.blockchain.com/v3/exchange/tickers/BTC-USD")
 	if err != nil {
 		return 0, fmt.Errorf("error fetching hashrate: %v", err)
 	}
@@ -147,7 +147,9 @@ func getBTCHashrate() (float64, error) {
 	}
 
 	var data struct {
-		Hashrate float64 `json:"hashrate"`
+		Price_24h struct {
+			Hashrate float64 `json:"hashrate"`
+		} `json:"price_24h"`
 	}
 
 	err = json.NewDecoder(response.Body).Decode(&data)
@@ -155,8 +157,8 @@ func getBTCHashrate() (float64, error) {
 		return 0, fmt.Errorf("error parsing hashrate data: %v", err)
 	}
 
-	// Convert from TH/s to EH/s (1 EH/s = 1000 TH/s)
-	return data.Hashrate / 1000, nil
+	// The hashrate is already in EH/s
+	return data.Price_24h.Hashrate, nil
 }
 
 // Function to fetch BTC all-time high
