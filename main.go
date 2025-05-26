@@ -151,18 +151,27 @@ func getBTCHashrate() (float64, error) {
 // Function to fetch BTC all-time high
 func getBTCATH() (float64, error) {
 	cg := gecko.NewClient(nil)
-	coin, err := cg.CoinsID("bitcoin", false, false, false, false, false, false)
+	// Get historical data to find ATH
+	data, err := cg.CoinsIDMarketChart("bitcoin", "usd", "max")
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("error fetching historical data: %v", err)
 	}
 
-	if coin.MarketData == nil {
-		return 0, fmt.Errorf("market data is nil")
+	if data.Prices == nil || len(*data.Prices) == 0 {
+		return 0, fmt.Errorf("no price data available")
 	}
 
-	ath, ok := coin.MarketData.ATH["usd"]
-	if !ok {
-		return 0, fmt.Errorf("ATH in USD not found")
+	// Find the highest price in the historical data
+	var ath float64
+	for _, pricePoint := range *data.Prices {
+		price := float64(pricePoint[1])
+		if price > ath {
+			ath = price
+		}
+	}
+
+	if ath == 0 {
+		return 0, fmt.Errorf("could not determine ATH from historical data")
 	}
 
 	return ath, nil
