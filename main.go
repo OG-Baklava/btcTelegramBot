@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -229,6 +230,41 @@ func getBTCVolume() (float64, error) {
 	return data.Bitcoin.Volume24h, nil
 }
 
+// Function to fetch the Fear & Greed Index
+func getFearGreedIndex() (int, error) {
+	response, err := http.Get("https://api.alternative.me/fng/")
+	if err != nil {
+		return 0, fmt.Errorf("error fetching Fear & Greed Index: %v", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("API returned non-200 status code: %d", response.StatusCode)
+	}
+
+	var data struct {
+		Data []struct {
+			Value string `json:"value"`
+		} `json:"data"`
+	}
+
+	err = json.NewDecoder(response.Body).Decode(&data)
+	if err != nil {
+		return 0, fmt.Errorf("error parsing Fear & Greed Index data: %v", err)
+	}
+
+	if len(data.Data) == 0 {
+		return 0, fmt.Errorf("no data returned from Fear & Greed Index API")
+	}
+
+	value, err := strconv.Atoi(data.Data[0].Value)
+	if err != nil {
+		return 0, fmt.Errorf("error converting Fear & Greed Index value to integer: %v", err)
+	}
+
+	return value, nil
+}
+
 // Function to send a message
 func sendMessage(chatID int64, message string) {
 	if bot == nil {
@@ -397,6 +433,19 @@ func handleVolumeCommand(update tgbotapi.Update) {
 	sendMessage(update.Message.Chat.ID, message)
 }
 
+// Handle /feargreed command
+func handleFearGreedCommand(update tgbotapi.Update) {
+	log.Println("Received /feargreed command")
+	index, err := getFearGreedIndex()
+	if err != nil {
+		log.Println("Error fetching Fear & Greed Index:", err)
+		sendMessage(update.Message.Chat.ID, "Error fetching Fear & Greed Index.")
+		return
+	}
+	message := fmt.Sprintf("Current Fear & Greed Index: %d", index)
+	sendMessage(update.Message.Chat.ID, message)
+}
+
 // HTTP handler for local testing
 func handler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Hello, this is the BTC Bot!"))
@@ -445,6 +494,8 @@ func main() {
 						handleATHCommand(update)
 					case "volume":
 						handleVolumeCommand(update)
+					case "feargreed":
+						handleFearGreedCommand(update)
 					default:
 						log.Println("Unknown command received:", update.Message.Command())
 					}
