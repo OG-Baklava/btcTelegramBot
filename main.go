@@ -203,6 +203,32 @@ func getBTCATH() (float64, error) {
 	return ath, nil
 }
 
+// Function to fetch BTC 24-hour trading volume
+func getBTCVolume() (float64, error) {
+	response, err := http.Get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_vol=true")
+	if err != nil {
+		return 0, fmt.Errorf("error fetching volume: %v", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("API returned non-200 status code: %d", response.StatusCode)
+	}
+
+	var data struct {
+		Bitcoin struct {
+			Volume24h float64 `json:"usd_24h_vol"`
+		} `json:"bitcoin"`
+	}
+
+	err = json.NewDecoder(response.Body).Decode(&data)
+	if err != nil {
+		return 0, fmt.Errorf("error parsing volume data: %v", err)
+	}
+
+	return data.Bitcoin.Volume24h, nil
+}
+
 // Function to send a message
 func sendMessage(chatID int64, message string) {
 	if bot == nil {
@@ -358,6 +384,19 @@ func handleATHCommand(update tgbotapi.Update) {
 	sendMessage(update.Message.Chat.ID, message)
 }
 
+// Handle /volume command
+func handleVolumeCommand(update tgbotapi.Update) {
+	log.Println("Received /volume command")
+	volume, err := getBTCVolume()
+	if err != nil {
+		log.Println("Error fetching BTC volume:", err)
+		sendMessage(update.Message.Chat.ID, "Error fetching BTC 24-hour trading volume.")
+		return
+	}
+	message := fmt.Sprintf("BTC 24-hour trading volume: $%s", formatNumber(volume))
+	sendMessage(update.Message.Chat.ID, message)
+}
+
 // HTTP handler for local testing
 func handler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Hello, this is the BTC Bot!"))
@@ -404,6 +443,8 @@ func main() {
 						handleChangeCommand(update)
 					case "ath":
 						handleATHCommand(update)
+					case "volume":
+						handleVolumeCommand(update)
 					default:
 						log.Println("Unknown command received:", update.Message.Command())
 					}
