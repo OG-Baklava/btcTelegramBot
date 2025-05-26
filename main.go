@@ -10,6 +10,8 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	gecko "github.com/superoo7/go-gecko/v3"
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
 )
 
 // Global variables
@@ -263,8 +265,14 @@ func handleMarketCapCommand(update tgbotapi.Update) {
 		sendMessage(update.Message.Chat.ID, "Error fetching BTC market cap.")
 		return
 	}
-	message := fmt.Sprintf("Current BTC market cap: $%.2f", marketCap)
+	message := fmt.Sprintf("Current BTC market cap: $%s", formatNumber(marketCap))
 	sendMessage(update.Message.Chat.ID, message)
+}
+
+// Helper function to format large numbers with commas
+func formatNumber(num float64) string {
+	p := message.NewPrinter(language.English)
+	return p.Sprintf("%0.2f", num)
 }
 
 // Handle /hashrate command
