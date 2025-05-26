@@ -148,6 +148,26 @@ func getBTCHashrate() (float64, error) {
 	return hashrate.TerahashesPerSecond / 1e6, nil // Convert from TH/s to EH/s
 }
 
+// Function to fetch BTC all-time high
+func getBTCATH() (float64, error) {
+	cg := gecko.NewClient(nil)
+	coin, err := cg.CoinsID("bitcoin", false, false, false, false, false, false)
+	if err != nil {
+		return 0, err
+	}
+
+	if coin.MarketData == nil {
+		return 0, fmt.Errorf("market data is nil")
+	}
+
+	ath, ok := coin.MarketData.ATH["usd"]
+	if !ok {
+		return 0, fmt.Errorf("ATH in USD not found")
+	}
+
+	return ath, nil
+}
+
 // Function to send a message
 func sendMessage(chatID int64, message string) {
 	if bot == nil {
@@ -252,6 +272,19 @@ func handleChangeCommand(update tgbotapi.Update) {
 	sendMessage(update.Message.Chat.ID, message)
 }
 
+// Handle /ath command
+func handleATHCommand(update tgbotapi.Update) {
+	log.Println("Received /ath command")
+	ath, err := getBTCATH()
+	if err != nil {
+		log.Println("Error fetching BTC ATH:", err)
+		sendMessage(update.Message.Chat.ID, "Error fetching BTC all-time high.")
+		return
+	}
+	message := fmt.Sprintf("Bitcoin All-Time High: $%.2f", ath)
+	sendMessage(update.Message.Chat.ID, message)
+}
+
 // HTTP handler for local testing
 func handler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Hello, this is the BTC Bot!"))
@@ -296,6 +329,8 @@ func main() {
 						handleHashrateCommand(update)
 					case "change":
 						handleChangeCommand(update)
+					case "ath":
+						handleATHCommand(update)
 					default:
 						log.Println("Unknown command received:", update.Message.Command())
 					}
