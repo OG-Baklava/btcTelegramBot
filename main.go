@@ -114,23 +114,29 @@ func getBTCFees() (float64, float64, float64, error) {
 
 // Function to fetch BTC market cap
 func getBTCMarketCap() (float64, error) {
-	cg := gecko.NewClient(nil)
-	coin, err := cg.CoinsID("bitcoin", false, false, false, false, false, false)
+	// Use CoinGecko simple price endpoint for market cap
+	response, err := http.Get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_market_cap=true")
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("error fetching market cap: %v", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("API returned non-200 status code: %d", response.StatusCode)
 	}
 
-	// Extract the market cap in USD
-	if coin.MarketData == nil {
-		return 0, fmt.Errorf("market data is nil")
+	var data struct {
+		Bitcoin struct {
+			MarketCap float64 `json:"usd_market_cap"`
+		} `json:"bitcoin"`
 	}
 
-	marketCap, ok := coin.MarketData.MarketCap["usd"]
-	if !ok {
-		return 0, fmt.Errorf("market cap in USD not found")
+	err = json.NewDecoder(response.Body).Decode(&data)
+	if err != nil {
+		return 0, fmt.Errorf("error parsing market cap data: %v", err)
 	}
 
-	return marketCap, nil
+	return data.Bitcoin.MarketCap, nil
 }
 
 // Function to fetch BTC hashrate
