@@ -442,8 +442,37 @@ func handleFearGreedCommand(update tgbotapi.Update) {
 		sendMessage(update.Message.Chat.ID, "Error fetching Fear & Greed Index.")
 		return
 	}
-	message := fmt.Sprintf("Current Fear & Greed Index: %d", index)
-	sendMessage(update.Message.Chat.ID, message)
+
+	// Fetch the Fear & Greed Index image
+	imageURL := fmt.Sprintf("https://alternative.me/crypto/fear-and-greed-index.png")
+	response, err := http.Get(imageURL)
+	if err != nil {
+		log.Println("Error fetching Fear & Greed Index image:", err)
+		sendMessage(update.Message.Chat.ID, "Error fetching Fear & Greed Index image.")
+		return
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		log.Println("Error fetching Fear & Greed Index image: non-200 status code")
+		sendMessage(update.Message.Chat.ID, "Error fetching Fear & Greed Index image.")
+		return
+	}
+
+	// Create a new photo message
+	photo := tgbotapi.NewPhoto(update.Message.Chat.ID, tgbotapi.FileReader{
+		Name:   "fear_and_greed.png",
+		Reader: response.Body,
+	})
+	photo.Caption = fmt.Sprintf("Current Fear & Greed Index: %d", index)
+
+	// Send the photo
+	_, err = bot.Send(photo)
+	if err != nil {
+		log.Println("Error sending Fear & Greed Index image:", err)
+		sendMessage(update.Message.Chat.ID, "Error sending Fear & Greed Index image.")
+		return
+	}
 }
 
 // HTTP handler for local testing
