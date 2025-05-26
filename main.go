@@ -135,30 +135,26 @@ func getBTCMarketCap() (float64, error) {
 
 // Function to fetch BTC hashrate
 func getBTCHashrate() (float64, error) {
-	// Use CoinGecko API for hashrate
-	response, err := http.Get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_hashrate=true")
+	resp, err := http.Get("https://api.blockchain.info/stats")
 	if err != nil {
 		return 0, fmt.Errorf("error fetching hashrate: %v", err)
 	}
-	defer response.Body.Close()
+	defer resp.Body.Close()
 
-	if response.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("API returned non-200 status code: %d", response.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("API returned non-200 status code: %d", resp.StatusCode)
 	}
 
 	var data struct {
-		Bitcoin struct {
-			Hashrate24h float64 `json:"hashrate_24h"`
-		} `json:"bitcoin"`
+		Hashrate float64 `json:"hash_rate"`
 	}
-
-	err = json.NewDecoder(response.Body).Decode(&data)
+	err = json.NewDecoder(resp.Body).Decode(&data)
 	if err != nil {
 		return 0, fmt.Errorf("error parsing hashrate data: %v", err)
 	}
 
-	// Convert from TH/s to EH/s (1 EH/s = 1000 TH/s)
-	return data.Bitcoin.Hashrate24h / 1000, nil
+	// Convert from TH/s to EH/s (1 EH/s = 1,000,000 TH/s)
+	return data.Hashrate / 1e6, nil
 }
 
 // Function to fetch BTC all-time high
