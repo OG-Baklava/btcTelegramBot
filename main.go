@@ -151,28 +151,37 @@ func getBTCHashrate() (float64, error) {
 // Function to fetch BTC all-time high
 func getBTCATH() (float64, error) {
 	cg := gecko.NewClient(nil)
-	// Get historical data to find ATH
-	data, err := cg.CoinsIDMarketChart("bitcoin", "usd", "max")
+	// Use CoinsID with specific parameters to get ATH data
+	coin, err := cg.CoinsID("bitcoin", false, false, true, false, false, false)
 	if err != nil {
-		return 0, fmt.Errorf("error fetching historical data: %v", err)
+		return 0, fmt.Errorf("error fetching coin data: %v", err)
 	}
 
-	if data.Prices == nil || len(*data.Prices) == 0 {
-		return 0, fmt.Errorf("no price data available")
+	if coin.MarketData == nil {
+		return 0, fmt.Errorf("market data is nil")
 	}
 
-	// Find the highest price in the historical data
-	var ath float64
-	for _, pricePoint := range *data.Prices {
-		price := float64(pricePoint[1])
-		if price > ath {
-			ath = price
-		}
+	ath, ok := coin.MarketData.ATH["usd"]
+	if !ok {
+		return 0, fmt.Errorf("ATH data not found")
 	}
 
-	if ath == 0 {
-		return 0, fmt.Errorf("could not determine ATH from historical data")
+	// Get the date of ATH
+	athDate, ok := coin.MarketData.ATHDate["usd"]
+	if !ok {
+		return ath, nil // Return ATH even if we can't get the date
 	}
+
+	// Parse the date string
+	date, err := time.Parse(time.RFC3339, athDate)
+	if err != nil {
+		log.Printf("Error parsing ATH date: %v", err)
+		return ath, nil // Return ATH even if we can't parse the date
+	}
+
+	// Format the message to include the date
+	message := fmt.Sprintf("Bitcoin All-Time High: $%.2f (reached on %s)", ath, date.Format("January 2, 2006"))
+	log.Println(message) // Log the full message for debugging
 
 	return ath, nil
 }
@@ -290,7 +299,27 @@ func handleATHCommand(update tgbotapi.Update) {
 		sendMessage(update.Message.Chat.ID, "Error fetching BTC all-time high.")
 		return
 	}
-	message := fmt.Sprintf("Bitcoin All-Time High: $%.2f", ath)
+
+	// Get the date of ATH
+	coin, err := gecko.NewClient(nil).CoinsID("bitcoin", false, false, true, false, false, false)
+	if err != nil {
+		sendMessage(update.Message.Chat.ID, fmt.Sprintf("Bitcoin All-Time High: $%.2f", ath))
+		return
+	}
+
+	athDate, ok := coin.MarketData.ATHDate["usd"]
+	if !ok {
+		sendMessage(update.Message.Chat.ID, fmt.Sprintf("Bitcoin All-Time High: $%.2f", ath))
+		return
+	}
+
+	date, err := time.Parse(time.RFC3339, athDate)
+	if err != nil {
+		sendMessage(update.Message.Chat.ID, fmt.Sprintf("Bitcoin All-Time High: $%.2f", ath))
+		return
+	}
+
+	message := fmt.Sprintf("Bitcoin All-Time High: $%.2f (reached on %s)", ath, date.Format("January 2, 2006"))
 	sendMessage(update.Message.Chat.ID, message)
 }
 
