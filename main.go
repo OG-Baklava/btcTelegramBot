@@ -153,8 +153,8 @@ func getBTCHashrate() (float64, error) {
 		return 0, fmt.Errorf("error parsing hashrate data: %v", err)
 	}
 
-	// Convert from TH/s to EH/s (1 EH/s = 1,000,000 TH/s)
-	return data.Hashrate / 1e6, nil
+	// Convert from GH/s to EH/s (1 EH/s = 1,000,000,000 GH/s)
+	return data.Hashrate / 1e9, nil
 }
 
 // Function to fetch BTC all-time high
