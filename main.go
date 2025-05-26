@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -137,7 +138,7 @@ func getBTCMarketCap() (float64, error) {
 
 // Function to fetch BTC hashrate
 func getBTCHashrate() (float64, error) {
-	// Use blockchain.info API instead
+	// Use blockchain.info API for hashrate
 	response, err := http.Get("https://blockchain.info/q/hashrate")
 	if err != nil {
 		return 0, fmt.Errorf("error fetching hashrate: %v", err)
@@ -154,13 +155,13 @@ func getBTCHashrate() (float64, error) {
 		return 0, fmt.Errorf("error reading response body: %v", err)
 	}
 
-	// Parse the hashrate (it's returned as a simple number)
-	hashrate, err := strconv.ParseFloat(string(body), 64)
+	// Parse the hashrate (it's returned as a simple number in H/s)
+	hashrate, err := strconv.ParseFloat(strings.TrimSpace(string(body)), 64)
 	if err != nil {
 		return 0, fmt.Errorf("error parsing hashrate: %v", err)
 	}
 
-	// Convert from H/s to EH/s
+	// Convert from H/s to EH/s (1 EH/s = 10^18 H/s)
 	return hashrate / 1e18, nil
 }
 
