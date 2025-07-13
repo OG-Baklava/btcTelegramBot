@@ -475,6 +475,35 @@ func handleFearGreedCommand(update tgbotapi.Update) {
 	}
 }
 
+// Handle /assets command
+func handleAssetsCommand(update tgbotapi.Update) {
+	log.Println("Received /assets command")
+	// Static list of top 10 most valuable assets by market cap (2024, approximate values)
+	type Asset struct {
+		Name      string
+		MarketCap float64
+		Symbol    string
+	}
+	assets := []Asset{
+		{"Gold", 15000000000000, "XAU"},
+		{"Apple", 2900000000000, "AAPL"},
+		{"Microsoft", 2800000000000, "MSFT"},
+		{"Saudi Aramco", 2000000000000, "2222.SR"},
+		{"Alphabet (Google)", 2000000000000, "GOOGL"},
+		{"Amazon", 1900000000000, "AMZN"},
+		{"Nvidia", 1800000000000, "NVDA"},
+		{"Silver", 1400000000000, "XAG"},
+		{"Meta (Facebook)", 1200000000000, "META"},
+		{"Bitcoin", 1200000000000, "BTC"},
+	}
+
+	message := "Top 10 Most Valuable Assets by Market Cap:\n"
+	for i, asset := range assets {
+		message += fmt.Sprintf("%d. %s (%s): $%s\n", i+1, asset.Name, asset.Symbol, formatNumber(asset.MarketCap))
+	}
+	sendMessage(update.Message.Chat.ID, message)
+}
+
 // HTTP handler for local testing
 func handler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Hello, this is the BTC Bot!"))
@@ -525,6 +554,8 @@ func main() {
 						handleVolumeCommand(update)
 					case "feargreed":
 						handleFearGreedCommand(update)
+					case "assets":
+						handleAssetsCommand(update)
 					default:
 						log.Println("Unknown command received:", update.Message.Command())
 					}
