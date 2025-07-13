@@ -547,14 +547,6 @@ func scrapeAssetsFromWebsite() ([]struct {
 					return
 				}
 
-				// Extract name and symbol from the name column
-				name := nameText
-				symbol := ""
-				if idx := strings.LastIndex(nameText, " "); idx != -1 {
-					name = strings.TrimSpace(nameText[:idx])
-					symbol = strings.TrimSpace(nameText[idx+1:])
-				}
-
 				// Parse market cap (remove $ and T/B/M suffixes)
 				marketCapText = strings.ReplaceAll(marketCapText, "$", "")
 				marketCapText = strings.ReplaceAll(marketCapText, ",", "")
@@ -571,10 +563,30 @@ func scrapeAssetsFromWebsite() ([]struct {
 					marketCapText = strings.TrimSuffix(marketCapText, "M")
 				}
 
+				// Trim any remaining whitespace
+				marketCapText = strings.TrimSpace(marketCapText)
+
 				marketCap, err := strconv.ParseFloat(marketCapText, 64)
 				if err != nil {
 					log.Printf("Error parsing market cap '%s': %v", marketCapText, err)
 					return
+				}
+
+				// Extract name and symbol - handle multi-line format
+				name := nameText
+				symbol := ""
+
+				// Split by newlines and clean up
+				lines := strings.Split(nameText, "\n")
+				if len(lines) >= 2 {
+					name = strings.TrimSpace(lines[0])
+					symbol = strings.TrimSpace(lines[1])
+				} else if len(lines) == 1 {
+					// Fallback to space-based parsing
+					if idx := strings.LastIndex(nameText, " "); idx != -1 {
+						name = strings.TrimSpace(nameText[:idx])
+						symbol = strings.TrimSpace(nameText[idx+1:])
+					}
 				}
 
 				assets = append(assets, struct {
