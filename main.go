@@ -339,6 +339,20 @@ func formatNumber(num float64) string {
 	return p.Sprintf("%0.2f", num)
 }
 
+// Helper function to format large numbers in a readable way
+func formatLargeNumber(num float64) string {
+	if num >= 1e12 {
+		return fmt.Sprintf("%.1fT", num/1e12)
+	} else if num >= 1e9 {
+		return fmt.Sprintf("%.1fB", num/1e9)
+	} else if num >= 1e6 {
+		return fmt.Sprintf("%.1fM", num/1e6)
+	} else if num >= 1e3 {
+		return fmt.Sprintf("%.1fK", num/1e3)
+	}
+	return fmt.Sprintf("%.0f", num)
+}
+
 // Handle /hashrate command
 func handleHashrateCommand(update tgbotapi.Update) {
 	log.Println("Received /hashrate command")
@@ -712,9 +726,13 @@ func displayAssets(update tgbotapi.Update, assets []struct {
 	Symbol    string
 	MarketCap float64
 }) {
-	message := "🏆 Top 10 Most Valuable Assets by Market Cap:\n\n"
+	message := "🏆 Top 10 Assets by Market Cap\n\n"
 	for _, asset := range assets {
-		message += fmt.Sprintf("%2d. %-20s (%s)\n     Market Cap: $%s\n\n", asset.Rank, asset.Name, asset.Symbol, formatNumber(asset.MarketCap))
+		message += fmt.Sprintf("%2d. %s (%s)\n   $%s\n\n",
+			asset.Rank,
+			asset.Name,
+			asset.Symbol,
+			formatLargeNumber(asset.MarketCap))
 	}
 	sendMessage(update.Message.Chat.ID, message)
 }
