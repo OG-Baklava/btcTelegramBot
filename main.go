@@ -728,7 +728,7 @@ func displayAssets(update tgbotapi.Update, assets []struct {
 }) {
 	message := "🏆 Top 10 Assets by Market Cap\n\n"
 	for _, asset := range assets {
-		message += fmt.Sprintf("%2d. %s (%s)\n   $%s\n\n",
+		message += fmt.Sprintf("%2d. %s (%s)\n   $%s\n",
 			asset.Rank,
 			asset.Name,
 			asset.Symbol,
