@@ -478,28 +478,44 @@ func handleFearGreedCommand(update tgbotapi.Update) {
 // Handle /assets command
 func handleAssetsCommand(update tgbotapi.Update) {
 	log.Println("Received /assets command")
-	// Static list of top 10 most valuable assets by market cap (2024, approximate values)
-	type Asset struct {
-		Name      string
-		MarketCap float64
-		Symbol    string
+
+	// Fetch the top assets from companiesmarketcap.com
+	response, err := http.Get("https://companiesmarketcap.com/api/assets/")
+	if err != nil {
+		log.Println("Error fetching assets:", err)
+		sendMessage(update.Message.Chat.ID, "Error fetching assets list.")
+		return
 	}
-	assets := []Asset{
-		{"Gold", 15000000000000, "XAU"},
-		{"Apple", 2900000000000, "AAPL"},
-		{"Microsoft", 2800000000000, "MSFT"},
-		{"Saudi Aramco", 2000000000000, "2222.SR"},
-		{"Alphabet (Google)", 2000000000000, "GOOGL"},
-		{"Amazon", 1900000000000, "AMZN"},
-		{"Nvidia", 1800000000000, "NVDA"},
-		{"Silver", 1400000000000, "XAG"},
-		{"Meta (Facebook)", 1200000000000, "META"},
-		{"Bitcoin", 1200000000000, "BTC"},
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		log.Println("Error fetching assets: non-200 status code")
+		sendMessage(update.Message.Chat.ID, "Error fetching assets list.")
+		return
 	}
 
-	message := "Top 10 Most Valuable Assets by Market Cap:\n"
-	for i, asset := range assets {
-		message += fmt.Sprintf("%d. %s (%s): $%s\n", i+1, asset.Name, asset.Symbol, formatNumber(asset.MarketCap))
+	var data struct {
+		Assets []struct {
+			Rank      int     `json:"rank"`
+			Name      string  `json:"name"`
+			Symbol    string  `json:"symbol"`
+			MarketCap float64 `json:"marketCap"`
+		} `json:"assets"`
+	}
+
+	err = json.NewDecoder(response.Body).Decode(&data)
+	if err != nil {
+		log.Println("Error parsing assets data:", err)
+		sendMessage(update.Message.Chat.ID, "Error parsing assets list.")
+		return
+	}
+
+	message := "🏆 Top 10 Most Valuable Assets by Market Cap:\n\n"
+	for i, asset := range data.Assets {
+		if i >= 10 {
+			break
+		}
+		message += fmt.Sprintf("%2d. %-20s (%s)\n     Market Cap: $%s\n\n", asset.Rank, asset.Name, asset.Symbol, formatNumber(asset.MarketCap))
 	}
 	sendMessage(update.Message.Chat.ID, message)
 }
