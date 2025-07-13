@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/PuerkitoBio/goquery"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	gecko "github.com/superoo7/go-gecko/v3"
 	"golang.org/x/text/language"
@@ -475,22 +477,129 @@ func handleFearGreedCommand(update tgbotapi.Update) {
 	}
 }
 
+// Function to scrape assets from the website
+func scrapeAssetsFromWebsite() ([]struct {
+	Rank      int
+	Name      string
+	Symbol    string
+	MarketCap float64
+}, error) {
+	response, err := http.Get("https://companiesmarketcap.com/assets-by-market-cap/")
+	if err != nil {
+		return nil, fmt.Errorf("error fetching website: %v", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("website returned non-200 status code: %d", response.StatusCode)
+	}
+
+	doc, err := goquery.NewDocumentFromReader(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing HTML: %v", err)
+	}
+
+	var assets []struct {
+		Rank      int
+		Name      string
+		Symbol    string
+		MarketCap float64
+	}
+
+	// Parse the table rows
+	doc.Find("table tbody tr").Each(func(i int, s *goquery.Selection) {
+		if i >= 10 {
+			return
+		}
+
+		cells := s.Find("td")
+		if cells.Length() < 3 {
+			return
+		}
+
+		rankText := strings.TrimSpace(cells.Eq(0).Text())
+		nameText := strings.TrimSpace(cells.Eq(1).Text())
+		marketCapText := strings.TrimSpace(cells.Eq(2).Text())
+
+		// Parse rank
+		rank, err := strconv.Atoi(rankText)
+		if err != nil {
+			return
+		}
+
+		// Extract name and symbol from the name column
+		name := nameText
+		symbol := ""
+		if idx := strings.LastIndex(nameText, " "); idx != -1 {
+			name = strings.TrimSpace(nameText[:idx])
+			symbol = strings.TrimSpace(nameText[idx+1:])
+		}
+
+		// Parse market cap (remove $ and T/B/M suffixes)
+		marketCapText = strings.ReplaceAll(marketCapText, "$", "")
+		marketCapText = strings.ReplaceAll(marketCapText, ",", "")
+
+		var multiplier float64 = 1
+		if strings.HasSuffix(marketCapText, "T") {
+			multiplier = 1e12
+			marketCapText = strings.TrimSuffix(marketCapText, "T")
+		} else if strings.HasSuffix(marketCapText, "B") {
+			multiplier = 1e9
+			marketCapText = strings.TrimSuffix(marketCapText, "B")
+		} else if strings.HasSuffix(marketCapText, "M") {
+			multiplier = 1e6
+			marketCapText = strings.TrimSuffix(marketCapText, "M")
+		}
+
+		marketCap, err := strconv.ParseFloat(marketCapText, 64)
+		if err != nil {
+			return
+		}
+
+		assets = append(assets, struct {
+			Rank      int
+			Name      string
+			Symbol    string
+			MarketCap float64
+		}{
+			Rank:      rank,
+			Name:      name,
+			Symbol:    symbol,
+			MarketCap: marketCap * multiplier,
+		})
+	})
+
+	return assets, nil
+}
+
 // Handle /assets command
 func handleAssetsCommand(update tgbotapi.Update) {
 	log.Println("Received /assets command")
 
-	// Fetch the top assets from companiesmarketcap.com
+	// Try API first
 	response, err := http.Get("https://companiesmarketcap.com/api/assets/")
 	if err != nil {
-		log.Println("Error fetching assets:", err)
-		sendMessage(update.Message.Chat.ID, "Error fetching assets list.")
+		log.Println("API failed, trying web scraping...")
+		assets, err := scrapeAssetsFromWebsite()
+		if err != nil {
+			log.Println("Error scraping assets:", err)
+			sendMessage(update.Message.Chat.ID, "Error fetching assets list.")
+			return
+		}
+		displayAssets(update, assets)
 		return
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		log.Println("Error fetching assets: non-200 status code")
-		sendMessage(update.Message.Chat.ID, "Error fetching assets list.")
+		log.Println("API returned non-200, trying web scraping...")
+		assets, err := scrapeAssetsFromWebsite()
+		if err != nil {
+			log.Println("Error scraping assets:", err)
+			sendMessage(update.Message.Chat.ID, "Error fetching assets list.")
+			return
+		}
+		displayAssets(update, assets)
 		return
 	}
 
@@ -505,16 +614,52 @@ func handleAssetsCommand(update tgbotapi.Update) {
 
 	err = json.NewDecoder(response.Body).Decode(&data)
 	if err != nil {
-		log.Println("Error parsing assets data:", err)
-		sendMessage(update.Message.Chat.ID, "Error parsing assets list.")
+		log.Println("Error parsing API data, trying web scraping...")
+		assets, err := scrapeAssetsFromWebsite()
+		if err != nil {
+			log.Println("Error scraping assets:", err)
+			sendMessage(update.Message.Chat.ID, "Error fetching assets list.")
+			return
+		}
+		displayAssets(update, assets)
 		return
 	}
 
-	message := "🏆 Top 10 Most Valuable Assets by Market Cap:\n\n"
+	// Convert API data to common format
+	var assets []struct {
+		Rank      int
+		Name      string
+		Symbol    string
+		MarketCap float64
+	}
 	for i, asset := range data.Assets {
 		if i >= 10 {
 			break
 		}
+		assets = append(assets, struct {
+			Rank      int
+			Name      string
+			Symbol    string
+			MarketCap float64
+		}{
+			Rank:      asset.Rank,
+			Name:      asset.Name,
+			Symbol:    asset.Symbol,
+			MarketCap: asset.MarketCap,
+		})
+	}
+	displayAssets(update, assets)
+}
+
+// Helper function to display assets
+func displayAssets(update tgbotapi.Update, assets []struct {
+	Rank      int
+	Name      string
+	Symbol    string
+	MarketCap float64
+}) {
+	message := "🏆 Top 10 Most Valuable Assets by Market Cap:\n\n"
+	for _, asset := range assets {
 		message += fmt.Sprintf("%2d. %-20s (%s)\n     Market Cap: $%s\n\n", asset.Rank, asset.Name, asset.Symbol, formatNumber(asset.MarketCap))
 	}
 	sendMessage(update.Message.Chat.ID, message)
