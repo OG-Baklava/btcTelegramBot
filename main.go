@@ -506,69 +506,111 @@ func scrapeAssetsFromWebsite() ([]struct {
 		MarketCap float64
 	}
 
-	// Parse the table rows
-	doc.Find("table tbody tr").Each(func(i int, s *goquery.Selection) {
-		if i >= 10 {
-			return
+	// Try different table selectors
+	selectors := []string{
+		"table tbody tr",
+		"table tr",
+		".table tbody tr",
+		"#assets-table tbody tr",
+		"[data-testid='assets-table'] tbody tr",
+	}
+
+	var foundRows bool
+	for _, selector := range selectors {
+		rows := doc.Find(selector)
+		log.Printf("Found %d rows with selector: %s", rows.Length(), selector)
+
+		if rows.Length() > 0 {
+			foundRows = true
+			rows.Each(func(i int, s *goquery.Selection) {
+				if i >= 10 {
+					return
+				}
+
+				cells := s.Find("td")
+				log.Printf("Row %d has %d cells", i, cells.Length())
+
+				if cells.Length() < 3 {
+					return
+				}
+
+				rankText := strings.TrimSpace(cells.Eq(0).Text())
+				nameText := strings.TrimSpace(cells.Eq(1).Text())
+				marketCapText := strings.TrimSpace(cells.Eq(2).Text())
+
+				log.Printf("Row %d: Rank='%s', Name='%s', MarketCap='%s'", i, rankText, nameText, marketCapText)
+
+				// Parse rank
+				rank, err := strconv.Atoi(rankText)
+				if err != nil {
+					log.Printf("Error parsing rank '%s': %v", rankText, err)
+					return
+				}
+
+				// Extract name and symbol from the name column
+				name := nameText
+				symbol := ""
+				if idx := strings.LastIndex(nameText, " "); idx != -1 {
+					name = strings.TrimSpace(nameText[:idx])
+					symbol = strings.TrimSpace(nameText[idx+1:])
+				}
+
+				// Parse market cap (remove $ and T/B/M suffixes)
+				marketCapText = strings.ReplaceAll(marketCapText, "$", "")
+				marketCapText = strings.ReplaceAll(marketCapText, ",", "")
+
+				var multiplier float64 = 1
+				if strings.HasSuffix(marketCapText, "T") {
+					multiplier = 1e12
+					marketCapText = strings.TrimSuffix(marketCapText, "T")
+				} else if strings.HasSuffix(marketCapText, "B") {
+					multiplier = 1e9
+					marketCapText = strings.TrimSuffix(marketCapText, "B")
+				} else if strings.HasSuffix(marketCapText, "M") {
+					multiplier = 1e6
+					marketCapText = strings.TrimSuffix(marketCapText, "M")
+				}
+
+				marketCap, err := strconv.ParseFloat(marketCapText, 64)
+				if err != nil {
+					log.Printf("Error parsing market cap '%s': %v", marketCapText, err)
+					return
+				}
+
+				assets = append(assets, struct {
+					Rank      int
+					Name      string
+					Symbol    string
+					MarketCap float64
+				}{
+					Rank:      rank,
+					Name:      name,
+					Symbol:    symbol,
+					MarketCap: marketCap * multiplier,
+				})
+			})
+			break
 		}
+	}
 
-		cells := s.Find("td")
-		if cells.Length() < 3 {
-			return
+	if !foundRows {
+		log.Println("No table rows found with any selector")
+		// Log the page title and some content for debugging
+		title := doc.Find("title").Text()
+		log.Printf("Page title: %s", title)
+
+		// Try to find any table
+		tables := doc.Find("table")
+		log.Printf("Found %d tables on the page", tables.Length())
+
+		// Log first few lines of HTML for debugging
+		html, _ := doc.Html()
+		if len(html) > 500 {
+			log.Printf("First 500 chars of HTML: %s", html[:500])
 		}
+	}
 
-		rankText := strings.TrimSpace(cells.Eq(0).Text())
-		nameText := strings.TrimSpace(cells.Eq(1).Text())
-		marketCapText := strings.TrimSpace(cells.Eq(2).Text())
-
-		// Parse rank
-		rank, err := strconv.Atoi(rankText)
-		if err != nil {
-			return
-		}
-
-		// Extract name and symbol from the name column
-		name := nameText
-		symbol := ""
-		if idx := strings.LastIndex(nameText, " "); idx != -1 {
-			name = strings.TrimSpace(nameText[:idx])
-			symbol = strings.TrimSpace(nameText[idx+1:])
-		}
-
-		// Parse market cap (remove $ and T/B/M suffixes)
-		marketCapText = strings.ReplaceAll(marketCapText, "$", "")
-		marketCapText = strings.ReplaceAll(marketCapText, ",", "")
-
-		var multiplier float64 = 1
-		if strings.HasSuffix(marketCapText, "T") {
-			multiplier = 1e12
-			marketCapText = strings.TrimSuffix(marketCapText, "T")
-		} else if strings.HasSuffix(marketCapText, "B") {
-			multiplier = 1e9
-			marketCapText = strings.TrimSuffix(marketCapText, "B")
-		} else if strings.HasSuffix(marketCapText, "M") {
-			multiplier = 1e6
-			marketCapText = strings.TrimSuffix(marketCapText, "M")
-		}
-
-		marketCap, err := strconv.ParseFloat(marketCapText, 64)
-		if err != nil {
-			return
-		}
-
-		assets = append(assets, struct {
-			Rank      int
-			Name      string
-			Symbol    string
-			MarketCap float64
-		}{
-			Rank:      rank,
-			Name:      name,
-			Symbol:    symbol,
-			MarketCap: marketCap * multiplier,
-		})
-	})
-
+	log.Printf("Scraped %d assets", len(assets))
 	return assets, nil
 }
 
